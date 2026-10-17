@@ -11,10 +11,32 @@ include:
         Do not edit files. Return only the skill checklist. If there are no actionable
         items, output exactly NO_PREFLIGHT_ITEMS and nothing else.
       extends: .preflight-merge-request
+  - component: $CI_SERVER_FQDN/nagyv/gitlab-opencode/opencode@2.1.0
+    inputs:
+      config_dir: ${CI_PROJECT_DIR}
+      auth_json: $OPENCODE_AUTH_JSON
+      job_prefix: changelog
+      stage: test
+      before_script:
+        - 'if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then git fetch --unshallow --tags origin; else git fetch --tags origin; fi'
+        - 'export PREVIOUS_RELEASE_TAG="$(git describe --tags --abbrev=0 "${CI_COMMIT_TAG}^" 2>/dev/null || true)"'
+      message: >-
+        Read and follow the changelog prompt at .agents/prompts/changelog.md.
+        The current release tag is ${CI_COMMIT_TAG}. The previous release tag is
+        ${PREVIOUS_RELEASE_TAG}. Generate only a concise Markdown release note with
+        the exact version in its heading. Do not edit files. Return Markdown only.
+      extends: .release-tag
 
 .preflight-merge-request:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID == $CI_PROJECT_ID'
+  environment:
+    name: preflight-analysis
+    action: prepare
+
+.release-tag:
+  rules:
+    - if: '$CI_COMMIT_TAG'
   environment:
     name: preflight-analysis
     action: prepare
@@ -58,3 +80,17 @@ preflight:comment:
     - bash .gitlab/scripts/post-preflight-comment.sh
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID == $CI_PROJECT_ID'
+
+# Create or update the GitLab release with the generated changelog note.
+release:create:
+  stage: deploy
+  image: alpine:3.22
+  needs:
+    - job: changelog:run
+      artifacts: true
+  before_script:
+    - apk add --no-cache bash ca-certificates curl jq
+  script:
+    - bash .gitlab/scripts/create-release.sh
+  rules:
+    - if: '$CI_COMMIT_TAG'
