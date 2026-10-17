@@ -7,9 +7,9 @@ include:
       before_script:
         - git fetch --no-tags origin "+refs/heads/${CI_DEFAULT_BRANCH}:refs/heads/main"
       message: >-
-        Load and follow the project's `preflight` skill. Analyze `git diff main...HEAD`.
-        Do not edit files. Return only the skill's checklist. If there are no actionable
-        items, output exactly `NO_PREFLIGHT_ITEMS` and nothing else !
+        Load and follow the preflight skill. Analyze the changes between main and HEAD.
+        Do not edit files. Return only the skill checklist. If there are no actionable
+        items, output exactly NO_PREFLIGHT_ITEMS and nothing else.
       extends: .preflight-merge-request
 
 .preflight-merge-request:
