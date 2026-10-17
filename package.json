@@ -1,0 +1,28 @@
+{
+  "name": "task-panel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bunx openchamber-guest-bundle panel/main.ts panel/main.js",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@openchamber/sdk": "^1.24.0"
+  },
+  "openchamber": {
+    "apiVersion": 1,
+    "engines": {
+      "openchamber": ">=1.24.0"
+    },
+    "contributes": {
+      "panel": {
+        "id": "task-panel",
+        "name": "Task Panel",
+        "icon": "task-line",
+        "entry": "panel/index.html"
+      },
+      "capabilities": ["files"]
+    }
+  }
+}

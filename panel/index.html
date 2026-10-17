@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Task Panel</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-width: 260px; }
+      body {
+        color: var(--surface-foreground, #202124);
+        background: var(--surface-background, #fff);
+        font: 13px/1.4 var(--font-sans, system-ui, sans-serif);
+      }
+      button, select { font: inherit; color: inherit; }
+      button { cursor: pointer; }
+      .app { padding: 14px; }
+      .header { display: flex; align-items: center; gap: 9px; }
+      .header-copy { min-width: 0; flex: 1; }
+      .filename { font-weight: 700; }
+      .title { margin-top: 2px; color: var(--surface-muted-foreground, #777); font-size: 11px; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+      .percent { color: var(--status-success, #16803c); font-size: 15px; font-weight: 700; }
+      .progress { height: 9px; margin: 14px 0 16px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--surface-foreground, #000) 10%, transparent); }
+      .progress-fill { height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--primary, #5865f2), var(--status-success, #16803c)); transition: width .25s ease; }
+      .toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin: -4px -4px 10px; }
+      .icon-action { display: inline-grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: var(--radius, 7px); background: transparent; color: var(--surface-muted-foreground, #888); padding: 6px; }
+      .icon-action:hover { background: var(--interactive-hover, color-mix(in srgb, var(--surface-foreground, #000) 10%, transparent)); color: var(--surface-foreground, #202124); }
+      .icon-action[aria-pressed="true"] { background: var(--interactive-selection, color-mix(in srgb, var(--primary, #5865f2) 12%, transparent)); color: var(--surface-foreground, #202124); }
+      .icon-action:focus-visible { outline: 2px solid var(--interactive-focus-ring, var(--primary, #5865f2)); outline-offset: 1px; }
+      .icon-action svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+      .picker-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 12px; background: color-mix(in srgb, var(--surface-background, #000) 68%, transparent); }
+      .picker { display: flex; flex-direction: column; width: min(100%, 460px); max-height: min(72vh, 560px); overflow: hidden; border: 1px solid var(--interactive-border, #555); border-radius: var(--radius, 10px); background: var(--surface-elevated, var(--surface-background, #181818)); box-shadow: 0 12px 36px color-mix(in srgb, #000 35%, transparent); }
+      .picker-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; }
+      .picker-close { width: 28px; height: 28px; border: 0; border-radius: var(--radius, 8px); background: transparent; font-size: 21px; line-height: 1; }
+      .picker-close:hover, .picker-location button:hover { background: var(--interactive-hover, color-mix(in srgb, var(--surface-foreground, #000) 10%, transparent)); }
+      .picker-location { display: flex; align-items: center; gap: 9px; min-height: 38px; border-top: 1px solid var(--interactive-border, #555); border-bottom: 1px solid var(--interactive-border, #555); padding: 4px 10px; color: var(--surface-muted-foreground, #888); font-size: 11px; }
+      .picker-location button { width: 27px; height: 27px; border: 0; border-radius: var(--radius, 7px); background: transparent; }
+      .picker-location button:disabled { opacity: .4; cursor: default; }
+      .picker-list { overflow: auto; padding: 6px; }
+      .picker-row { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 34px; border: 0; border-radius: var(--radius, 7px); background: transparent; padding: 6px 8px; text-align: left; }
+      .picker-row > span:nth-child(2) { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+      .picker-row:hover, .picker-row.selected { background: var(--interactive-selection, color-mix(in srgb, var(--primary, #5865f2) 12%, transparent)); }
+      .picker-chevron { color: var(--surface-muted-foreground, #888); }
+      .picker-message { margin: 0; padding: 12px; color: var(--surface-muted-foreground, #888); }
+      .section { margin: 13px 0 5px; color: var(--surface-muted-foreground, #777); font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+      .task { display: flex; align-items: flex-start; gap: 8px; width: 100%; border: 0; border-radius: var(--radius, 8px); background: transparent; padding: 7px 5px; text-align: left; }
+      .task.active { color: var(--interactive-selection-foreground, var(--surface-foreground, #202124)); background: var(--interactive-selection, color-mix(in srgb, var(--primary, #5865f2) 11%, transparent)); }
+      .task.done .label { color: var(--surface-muted-foreground, #777); text-decoration: line-through; }
+      .mark { width: 19px; flex: 0 0 19px; text-align: center; }
+      .label { min-width: 0; overflow-wrap: anywhere; }
+      .empty, .error { border-radius: var(--radius, 8px); background: color-mix(in srgb, var(--surface-foreground, #000) 5%, transparent); padding: 14px; color: var(--surface-muted-foreground, #777); }
+      .error { color: var(--status-error, #c43d3d); }
+      .hint { margin-top: 10px; color: var(--surface-muted-foreground, #777); font-size: 11px; }
+    </style>
+  </head>
+  <body>
+    <main id="app" class="app" aria-live="polite"></main>
+    <script src="main.js"></script>
+  </body>
+</html>
