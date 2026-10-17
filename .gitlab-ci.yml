@@ -19,6 +19,30 @@ include:
     name: preflight-analysis
     action: prepare
 
+# Build the OpenChamber panel on branch pushes.
+build:
+  stage: build
+  image: oven/bun:1
+  interruptible: true
+  variables:
+    BUN_INSTALL_CACHE_DIR: "$CI_PROJECT_DIR/.bun-cache"
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .bun-cache/
+      - node_modules/
+  script:
+    - bun install --frozen-lockfile
+    - bun run build
+  artifacts:
+    paths:
+      - panel/main.js
+    expire_in: 1 week
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH'
+
 preflight:comment:
   stage: test
   environment:
