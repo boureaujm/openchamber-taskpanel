@@ -3,6 +3,7 @@ include:
     inputs:
       config_dir: ${CI_PROJECT_DIR}
       auth_json: $OPENCODE_AUTH_JSON
+      image_tag: "2.1.0"
       job_prefix: preflight
       before_script:
         - git fetch --no-tags origin "+refs/heads/${CI_DEFAULT_BRANCH}:refs/heads/main"
@@ -15,6 +16,7 @@ include:
     inputs:
       config_dir: ${CI_PROJECT_DIR}
       auth_json: $OPENCODE_AUTH_JSON
+      image_tag: "2.1.0"
       job_prefix: changelog
       stage: test
       before_script:
