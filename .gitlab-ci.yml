@@ -1,0 +1,36 @@
+include:
+  - component: $CI_SERVER_FQDN/nagyv/gitlab-opencode/opencode@2.1.0
+    inputs:
+      config_dir: ${CI_PROJECT_DIR}
+      auth_json: $OPENCODE_AUTH_JSON
+      job_prefix: preflight
+      before_script:
+        - git fetch --no-tags origin "+refs/heads/${CI_DEFAULT_BRANCH}:refs/heads/main"
+      message: >-
+        Load and follow the project's `preflight` skill. Analyze `git diff main...HEAD`.
+        Do not edit files. Return only the skill's checklist. If there are no actionable
+        items, output exactly `NO_PREFLIGHT_ITEMS` and nothing else.
+      extends: .preflight-merge-request
+
+.preflight-merge-request:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID == $CI_PROJECT_ID'
+  environment:
+    name: preflight-analysis
+    action: prepare
+
+preflight:comment:
+  stage: test
+  environment:
+    name: preflight-comment
+    action: prepare
+  image:
+    name: registry.gitlab.com/nagyv/gitlab-opencode:1.0.137
+    entrypoint: [""]
+  needs:
+    - job: preflight:run
+      artifacts: true
+  script:
+    - bash .gitlab/scripts/post-preflight-comment.sh
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID == $CI_PROJECT_ID'
