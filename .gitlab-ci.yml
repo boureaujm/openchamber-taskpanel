@@ -7,9 +7,9 @@ include:
       before_script:
         - git fetch --no-tags origin "+refs/heads/${CI_DEFAULT_BRANCH}:refs/heads/main"
       message: >-
-        Load and follow the project's `preflight` skill. Analyze `git diff main...HEAD`.
-        Do not edit files. Return only the skill's checklist. If there are no actionable
-        items, output exactly `NO_PREFLIGHT_ITEMS` and nothing else !
+        Load and follow the preflight skill. Analyze the changes between main and HEAD.
+        Do not edit files. Return only the skill checklist. If there are no actionable
+        items, output exactly NO_PREFLIGHT_ITEMS and nothing else.
       extends: .preflight-merge-request
 
 .preflight-merge-request:
@@ -19,17 +19,41 @@ include:
     name: preflight-analysis
     action: prepare
 
+# Build the OpenChamber panel on branch pushes.
+build:
+  stage: build
+  image: oven/bun:1
+  interruptible: true
+  variables:
+    BUN_INSTALL_CACHE_DIR: "$CI_PROJECT_DIR/.bun-cache"
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .bun-cache/
+      - node_modules/
+  script:
+    - bun install --frozen-lockfile
+    - bun run build
+  artifacts:
+    paths:
+      - panel/main.js
+    expire_in: 1 week
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH'
+
 preflight:comment:
   stage: test
   environment:
     name: preflight-comment
     action: prepare
-  image:
-    name: registry.gitlab.com/nagyv/gitlab-opencode:1.0.137
-    entrypoint: [""]
+  image: alpine:3.22
   needs:
     - job: preflight:run
       artifacts: true
+  before_script:
+    - apk add --no-cache bash ca-certificates curl jq
   script:
     - bash .gitlab/scripts/post-preflight-comment.sh
   rules:
