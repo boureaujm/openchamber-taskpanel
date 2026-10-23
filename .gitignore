@@ -1,3 +1,4 @@
 node_modules/
-.pixel/*
 .idea/*
+opencode-preflight.out
+opencode-changelog.out
