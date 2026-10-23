@@ -1,0 +1,242 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build panel
+    if: github.event_name == 'push' && github.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build panel
+        run: bun run build
+
+      - name: Upload panel bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-bundle
+          path: panel/main.js
+          retention-days: 7
+
+  test:
+    name: Test
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_type == 'branch')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run tests
+        run: bun test
+
+  preflight:
+    name: Preflight analysis
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run OpenCode Preflight
+        uses: dceoy/opencode-action@163f9a9cd3d3f497e2847635585419f951371d2f # v0.8.1
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          model: opencode-go/kimi-k3
+          use-github-token: true
+          prompt: >-
+            Load and follow the preflight skill. Analyze the changes between
+            main and HEAD. Do not modify source files. Write only the final
+            checklist to opencode-preflight.out. If there are no actionable
+            items, write exactly NO_PREFLIGHT_ITEMS and nothing else.
+
+      - name: Upload Preflight result
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-preflight
+          path: opencode-preflight.out
+          if-no-files-found: error
+          retention-days: 1
+
+  preflight-comment:
+    name: Publish Preflight comment
+    needs: preflight
+    if: >-
+      always() && needs.preflight.result == 'success' &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Download Preflight result
+        uses: actions/download-artifact@v4
+        with:
+          name: opencode-preflight
+
+      - name: Create or update PR comment
+        uses: actions/github-script@v7
+        env:
+          PREFLIGHT_FILE: opencode-preflight.out
+          MARKER: '<!-- opencode-preflight -->'
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require('node:fs');
+            const body = fs.readFileSync(process.env.PREFLIGHT_FILE, 'utf8').trim();
+            const marker = process.env.MARKER;
+            const issue_number = context.payload.pull_request.number;
+            const { owner, repo } = context.repo;
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number, per_page: 100 }
+            );
+            const existing = comments.find(comment => comment.body?.startsWith(marker));
+
+            if (!body || body === 'NO_PREFLIGHT_ITEMS') {
+              if (existing) {
+                await github.rest.issues.deleteComment({
+                  owner, repo, comment_id: existing.id
+                });
+              }
+              return;
+            }
+
+            const commentBody = `${marker}\n\n## Pre-Flight\n\n${body}`;
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body: commentBody
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body: commentBody
+              });
+            }
+
+  changelog:
+    name: Generate changelog
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run OpenCode changelog
+        uses: dceoy/opencode-action@163f9a9cd3d3f497e2847635585419f951371d2f # v0.8.1
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          model: opencode-go/kimi-k3
+          use-github-token: true
+          prompt: >-
+            Read and follow the changelog prompt at
+            .agents/prompts/changelog.md. The current release tag is
+            ${{ github.ref_name }}. Generate concise Markdown release notes
+            from commits between the previous release tag and the current tag.
+            Write only the final Markdown to opencode-changelog.out. The
+            heading must contain the exact version ${{ github.ref_name }}.
+            Do not modify any other file.
+
+      - name: Upload changelog
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-changelog
+          path: opencode-changelog.out
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Create GitHub Release
+    needs: changelog
+    if: needs.changelog.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: opencode-changelog
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          description="$(cat opencode-changelog.out)"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --title "Release $TAG" \
+              --notes "$description"
+          else
+            gh release create "$TAG" \
+              --title "Release $TAG" \
+              --notes "$description"
+          fi
