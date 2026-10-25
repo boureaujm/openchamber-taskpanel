@@ -1,7 +1,13 @@
 {
-  "name": "task-panel",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@boureaujm/openchamber-taskpanel",
+  "version": "1.0.0",
+  "private": false,
+  "description": "OpenChamber extension that displays Markdown task plans with a visual progress bar.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/boureaujm/openchamber-taskpanel.git"
+  },
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "bunx openchamber-guest-bundle panel/main.ts panel/main.js",
