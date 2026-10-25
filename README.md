@@ -2,6 +2,8 @@
 
 OpenChamber extension that displays Markdown task plans with a visual progress bar.
 
+[![Task Panel displaying a Markdown plan with progress](docs/panel.png)](docs/panel.png)
+
 ## Supported files
 
 The extension searches for:
