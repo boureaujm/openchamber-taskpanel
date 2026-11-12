@@ -2,7 +2,10 @@
 
 OpenChamber extension that displays Markdown task plans with a visual progress bar.
 
-[![Task Panel displaying a Markdown plan with progress](docs/panel.png)](docs/panel.png)
+<p align="center">
+  <img src="docs/panel.png" alt="Task Panel in dark mode" width="380">
+  <img src="docs/panel-light.png" alt="Task Panel in light mode" width="380">
+</p>
 
 ## Supported files
 
