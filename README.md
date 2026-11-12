@@ -9,10 +9,10 @@ OpenChamber extension that displays Markdown task plans with a visual progress b
 The extension searches for:
 
 - `openspec/changes/**/tasks.md`
-- `tasks.md`
-- `.openchamber/tasks.md`
+- `task.md` and `tasks.md`
+- `.openchamber/task.md` and `.openchamber/tasks.md`
 
-It understands Markdown checkboxes (`- [ ]` and `- [x]`). OpenSpec is supported by convention; no OpenSpec dependency is required.
+It understands Markdown checkboxes at the start of a list item (`- [ ]`, `- [x]`) and at the end of a heading (`## 1. Schema [ ]`). For headings, the parent section becomes the enclosing heading, so numbered plans like `## 1. Database` / `### 1.1 Install server [x]` keep their grouping.
 
 ## Install in OpenChamber
 
