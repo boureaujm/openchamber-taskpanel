@@ -22,7 +22,8 @@ The GitHub Actions workflow uses these same Bun commands. `bun run build` regene
 
 ## Behavior to preserve
 
-- Plans are discovered in `openspec/changes/**/tasks.md`, `tasks.md`, and `.openchamber/tasks.md`.
+- Plans are discovered in `openspec/changes/**/tasks.md`, `task.md`, `tasks.md`, `.openchamber/task.md`, and `.openchamber/tasks.md`. When several are found, the first sorted path is loaded; a saved selection wins.
+- Tasks are Markdown list checkboxes (`- [ ]`, `- [x]`) and headings whose text ends with a checkbox (`### 1.1 Install server [x]`). A heading task's section is its parent heading.
 - The panel polls the selected file every four seconds because the SDK has no general file-change subscription.
 - Completed tasks are hidden by default, but progress always counts all tasks.
 - Parser behavior is covered by `test/parser.test.ts`; keep parser logic independent from DOM and host APIs.
