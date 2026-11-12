@@ -19,10 +19,26 @@ export function parseTasks(markdown: string, fallbackTitle = "Task plan"): Parse
   let title = fallbackTitle;
 
   lines.forEach((line, index) => {
-    const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
+    const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*$/);
     if (heading) {
       const level = heading[1].length;
-      const text = heading[2].trim();
+      const text = heading[2].replace(/\s*#+\s*$/, "").trim();
+      const checkbox = text.match(/^(.*?)\s+\[([ xX])\]\s*$/);
+      if (checkbox && checkbox[1].trim()) {
+        const label = checkbox[1].trim();
+        const section = [...headings].reverse().find((heading) => heading.level >= 2 && heading.level < level)?.text ?? "Tasks";
+        tasks.push({
+          id: `${index}:${label}`,
+          text: label,
+          done: checkbox[2].toLowerCase() === "x",
+          level: 0,
+          section,
+          line: index + 1,
+        });
+        headings.push({ level, text: label });
+        if (level === 1 && title === fallbackTitle) title = label;
+        return;
+      }
       headings.push({ level, text });
       if (level === 1 && title === fallbackTitle) title = text;
       return;
@@ -53,8 +69,8 @@ export function progressOf(tasks: Task[]) {
 export function describeCurrentWork(tasks: Task[]) {
   const activeTask = tasks.find((task) => !task.done);
   if (!activeTask) {
-    if (!tasks.length) return "Aucune tâche détectée";
-    return `Plan terminé · ${tasks.length} ${tasks.length === 1 ? "tâche" : "tâches"}`;
+    if (!tasks.length) return "No tasks detected";
+    return `Plan complete · ${tasks.length} ${tasks.length === 1 ? "task" : "tasks"}`;
   }
   return activeTask.section === "Tasks" ? activeTask.text : `${activeTask.section} · ${activeTask.text}`;
 }
