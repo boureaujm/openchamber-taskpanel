@@ -2,10 +2,13 @@
 
 OpenChamber extension that displays Markdown task plans with a visual progress bar.
 
-<p align="center">
-  <img src="docs/panel.png" alt="Task Panel in dark mode" width="380">
-  <img src="docs/panel-light.png" alt="Task Panel in light mode" width="380">
-</p>
+## Themes
+
+The panel follows OpenChamber's light or dark appearance. Light mode uses the host accent color (orange) for the progress bar and current-task highlights; dark mode keeps the green accent.
+
+| Dark | Light |
+| --- | --- |
+| ![Task Panel in dark mode](docs/panel-dark.png) | ![Task Panel in light mode](docs/panel-light.png) |
 
 ## Supported files
 
