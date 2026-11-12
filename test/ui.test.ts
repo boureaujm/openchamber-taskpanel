@@ -18,7 +18,7 @@ test("defines both dark and light design tokens with accessible focus states", (
   for (const token of ["--bg", "--surface-raised", "--track", "--ink", "--ink-muted", "--accent", "--active", "--focus", "--danger"]) {
     expect(index).toContain(token);
   }
-  expect(index).toContain('[data-theme="light"]');
+  expect(index).toContain('[data-oc-theme="light"]');
   expect(index).toContain("outline: 2px solid var(--focus)");
   expect(index).toContain("prefers-reduced-motion: reduce");
 });
