@@ -115,7 +115,7 @@ test("polls the selected plan without rediscovery and ignores stale, failed, and
         if (failBRead) throw new Error("read unavailable");
         return { content: "# Plan B\n- [ ] Latest B task" };
       }
-      return { content: "# Plan A\n- [ ] Initial A task" };
+      return { content: "# Plan A\n- [x] Completed A task\n- [ ] Initial A task" };
     },
     async setBadge() { badgeWrites++; throw new Error("badge unavailable"); },
   };
@@ -136,10 +136,19 @@ test("polls the selected plan without rediscovery and ignores stale, failed, and
   try {
     await import("../panel/main.ts");
     await onReady!({ directory: "." });
+    expect(app.innerHTML).not.toContain("Completed A task");
     expect(app.innerHTML).toContain("Initial A task");
+    expect(app.innerHTML).toContain("1 / 2 tasks");
+    expect(app.innerHTML).toContain("1/2");
     expect(storageWrites).toBeGreaterThan(0);
     expect(badgeWrites).toBeGreaterThan(0);
     expect(app.innerHTML).not.toContain("Unable to read plan");
+
+    documentMock.querySelector("#toggle-completed")!.click();
+    expect(app.innerHTML).toContain("Completed A task");
+    expect(app.innerHTML).toContain("Initial A task");
+    expect(app.innerHTML).toContain("1 / 2 tasks");
+    expect(app.innerHTML).toContain("1/2");
 
     const discoveriesBeforePoll = listDirCalls;
     const readsBeforePoll = reads.length;

@@ -26,6 +26,7 @@ test("hides completed tasks by default and can show the full plan", () => {
   const tasks = parseTasks("# Plan\n## Finished\n- [x] Done section\n## Active\n- [x] Done in active section\n- [ ] Still working").tasks;
   expect(visibleTasks(tasks, false).map((task) => task.text)).toEqual(["Still working"]);
   expect(visibleTasks(tasks, true).map((task) => task.text)).toHaveLength(3);
+  expect(progressOf(tasks)).toEqual({ completed: 2, total: 3, percent: 67 });
 });
 
 test("reads checkboxes placed at the end of headings", () => {

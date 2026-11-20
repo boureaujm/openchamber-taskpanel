@@ -39,7 +39,7 @@ let pickerEntries: Array<{ name: string; kind: "file" | "directory" | "other" }>
 let pickerError: string | null = null;
 let pickerLoading = false;
 let pickerRequest = 0;
-let showCompletedTasks = true;
+let showCompletedTasks = false;
 let collapsedSections = new Set<string>();
 const initializedPlans = new Set<string>();
 
