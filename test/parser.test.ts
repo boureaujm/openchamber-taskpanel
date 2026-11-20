@@ -51,3 +51,23 @@ test("still strips closing hashes and ignores bracketed prose", () => {
   expect(plan.title).toBe("Plan");
   expect(plan.tasks.map((task) => [task.text, task.done])).toEqual([["One", false], ["Two", true]]);
 });
+
+test("ignores task-like lines in backtick and tilde fences", () => {
+  const plan = parseTasks([
+    "# Plan",
+    "```markdown",
+    "- [ ] fake list task",
+    "### Fake heading task [x]",
+    "```",
+    "~~~text",
+    "- [x] fake completed task",
+    "~~~",
+    "- [ ] Real list task",
+    "### 1.1 Real heading task [x]",
+  ].join("\n"));
+
+  expect(plan.tasks.map((task) => [task.text, task.done])).toEqual([
+    ["Real list task", false],
+    ["1.1 Real heading task", true],
+  ]);
+});

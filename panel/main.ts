@@ -1,6 +1,7 @@
 import { connectHost } from "@openchamber/sdk";
 import { applyHostReady } from "@openchamber/sdk/ui";
 import { parseTasks, progressOf, visibleTasks, type ParsedPlan, type Task } from "../src/parser";
+import { shouldDescendDirectory } from "../src/discovery";
 
 const host = connectHost();
 const app = document.querySelector<HTMLMainElement>("#app")!;
@@ -22,7 +23,16 @@ let directory: string | null = null;
 let plans: string[] = [];
 let selectedPath: string | null = null;
 let currentPlan: ParsedPlan | null = null;
+let currentPlanContent: string | null = null;
+let currentPlanPath: string | null = null;
+let unavailablePath: string | null = null;
+let emptyStateRendered = false;
 let poll: number | undefined;
+let planReadRequest = 0;
+let discoveryRequest = 0;
+let selectionVersion = 0;
+let selectionWrites = Promise.resolve();
+let badgeWrites = Promise.resolve();
 let pickerOpen = false;
 let pickerDirectory = ".";
 let pickerEntries: Array<{ name: string; kind: "file" | "directory" | "other" }> = [];
@@ -42,6 +52,12 @@ function sections(tasks: Task[]) {
   return [...new Map(tasks.map((task) => [task.section, tasks.filter((candidate) => candidate.section === task.section)])).values()];
 }
 function sectionName(tasks: Task[]) { return tasks[0]?.section ?? "Tasks"; }
+function persistSelection(path: string) {
+  selectionWrites = selectionWrites.then(async () => {
+    if (path !== selectedPath) return;
+    try { await host.storage.set("selectedPath", path); } catch { /* readable plan stays available */ }
+  });
+}
 
 async function findFiles(path: string, depth = 0): Promise<string[]> {
   if (depth > 6) return [];
@@ -50,7 +66,7 @@ async function findFiles(path: string, depth = 0): Promise<string[]> {
   for (const entry of entries) {
     const child = path === "." ? entry.name : `${path}/${entry.name}`;
     if (entry.kind === "file" && PLAN_FILE.test(entry.name)) result.push(child);
-    if (entry.kind === "directory" && !entry.name.startsWith(".")) result.push(...await findFiles(child, depth + 1));
+    if (entry.kind === "directory" && shouldDescendDirectory(entry.name)) result.push(...await findFiles(child, depth + 1));
   }
   return result;
 }
@@ -62,18 +78,42 @@ async function discoverPlans() {
   return [...found].sort();
 }
 async function loadPlan() {
-  if (!selectedPath) { currentPlan = null; render(); return; }
+  const path = selectedPath, request = ++planReadRequest;
+  if (!path) {
+    if (currentPlan || currentPlanContent !== null || currentPlanPath !== null || unavailablePath) {
+      currentPlan = null; currentPlanContent = null; currentPlanPath = null; unavailablePath = null; render();
+    } else if (!emptyStateRendered) render();
+    return;
+  }
+  let content: string;
   try {
-    const { content } = await host.readFile(selectedPath);
-    currentPlan = parseTasks(content, selectedPath.split("/").pop()?.replace(/\.md$/i, "") ?? "Task plan");
-    if (!initializedPlans.has(selectedPath)) {
+    ({ content } = await host.readFile(path));
+  } catch {
+    if (request !== planReadRequest || path !== selectedPath) return;
+    if (unavailablePath === path) return;
+    currentPlan = null; currentPlanContent = null; currentPlanPath = null;
+    unavailablePath = path;
+    render(`Unable to read ${path}: it was moved or deleted.`);
+    return;
+  }
+  if (request !== planReadRequest || path !== selectedPath) return;
+  unavailablePath = null;
+  emptyStateRendered = false;
+  if (currentPlanPath !== path || currentPlanContent !== content) {
+    currentPlan = parseTasks(content, path.split("/").pop()?.replace(/\.md$/i, "") ?? "Task plan");
+    currentPlanPath = path;
+    currentPlanContent = content;
+    if (!initializedPlans.has(path)) {
       for (const group of sections(currentPlan.tasks)) if (group.length && group.every((task) => task.done)) collapsedSections.add(sectionName(group));
-      initializedPlans.add(selectedPath);
+      initializedPlans.add(path);
     }
-    await host.storage.set("selectedPath", selectedPath);
     render();
-    await host.setBadge(currentPlan.tasks.filter((task) => !task.done).length || null);
-  } catch { currentPlan = null; render(`Unable to read ${selectedPath}: it was moved or deleted.`); }
+    const badge = currentPlan.tasks.filter((task) => !task.done).length || null;
+    badgeWrites = badgeWrites.then(async () => {
+      if (request !== planReadRequest || path !== selectedPath) return;
+      try { await host.setBadge(badge); } catch { /* readable plan stays available */ }
+    });
+  }
 }
 function parentDirectory(path: string) { if (path === ".") return null; const parts = path.split("/"); return parts.length === 1 ? "." : parts.slice(0, -1).join("/"); }
 function joinPath(parent: string, child: string) { return parent === "." ? child : `${parent}/${child}`; }
@@ -92,16 +132,27 @@ async function openFilePicker() {
   if (!directory) { pickerEntries = []; pickerLoading = false; pickerError = "Open a project to browse its files."; render(); return; }
   await loadPickerDirectory(selectedPath ? parentDirectory(selectedPath) ?? "." : ".");
 }
-async function selectPlanFile(path: string) { selectedPath = path; pickerOpen = false; pickerRequest += 1; await loadPlan(); }
-async function refresh() {
+async function selectPlanFile(path: string) { selectedPath = path; selectionVersion++; persistSelection(path); pickerOpen = false; pickerRequest += 1; await loadPlan(); }
+async function refreshPlans() {
   if (pickerOpen) return;
+  const request = ++discoveryRequest, version = selectionVersion;
+  let found: string[];
   try {
-    plans = await discoverPlans();
-    const saved = selectedPath ?? await host.storage.get<string>("selectedPath");
-    if (saved?.toLowerCase().endsWith(".md")) try { selectedPath = (await host.stat(saved)).kind === "file" ? saved : plans[0] ?? null; } catch { selectedPath = plans[0] ?? null; }
-    else selectedPath = plans[0] ?? null;
-    await loadPlan();
-  } catch { render("No project available"); }
+    found = await discoverPlans();
+  } catch {
+    if (!currentPlan) render();
+    return;
+  }
+  if (request !== discoveryRequest || version !== selectionVersion || pickerOpen) return;
+  plans = found;
+  let saved = selectedPath;
+  if (!saved) try { saved = await host.storage.get<string>("selectedPath") ?? null; } catch { /* selection discovery can continue */ }
+  if (request !== discoveryRequest || version !== selectionVersion || pickerOpen) return;
+  let nextPath = plans[0] ?? null;
+  if (saved?.toLowerCase().endsWith(".md")) try { nextPath = (await host.stat(saved)).kind === "file" ? saved : nextPath; } catch { /* use first discovered plan */ }
+  if (request !== discoveryRequest || version !== selectionVersion || pickerOpen) return;
+  if (selectedPath !== nextPath) { selectedPath = nextPath; selectionVersion++; if (nextPath) persistSelection(nextPath); }
+  await loadPlan();
 }
 
 function toolbarMarkup() {
@@ -109,8 +160,10 @@ function toolbarMarkup() {
   return `<div class="tp-toolbar" role="toolbar" aria-label="Plan actions"><button class="tp-icon-btn" id="open-picker" title="Choose a file" aria-label="Choose a Markdown file">${icons.down.replace("M12 5v14M6 13l6 6 6-6", "M12 5v14M5 12h14")}</button><button class="tp-icon-btn" id="toggle-completed" title="${showCompletedTasks ? "Hide" : "Show"} completed tasks" aria-label="${showCompletedTasks ? "Hide" : "Show"} completed tasks" aria-pressed="${showCompletedTasks}">${eye}</button><button class="tp-icon-btn" id="refresh" title="Refresh" aria-label="Refresh">${icons.right.replace('m9 6 6 6-6 6', 'M20 7v5h-5M4 17v-5h5M5.6 9a7 7 0 0 1 11.8-2L20 12M4 12l2.6 5a7 7 0 0 0 11.8-2')}</button></div>`;
 }
 function render(error?: string) {
-  if (error) { app.innerHTML = `<div class="tp-head"><div class="tp-file"><div class="tp-file-name">${icons.file}Task Panel</div></div>${toolbarMarkup()}</div><div class="tp-notice is-error" role="alert"><strong>Unable to read plan</strong>${escapeHtml(error)}</div>`; bindToolbar(); return; }
-  if (!currentPlan) { app.innerHTML = `<div class="tp-head"><div class="tp-file"><div class="tp-file-name">${icons.file}Task Panel</div></div>${toolbarMarkup()}</div><div class="tp-notice"><strong>No tasks detected</strong>Choose a Markdown file with <code>+</code>, or create <code>openspec/changes/&lt;change&gt;/tasks.md</code>.</div>`; bindToolbar(); return; }
+  if (error) { emptyStateRendered = false; app.innerHTML = `<div class="tp-head"><div class="tp-file"><div class="tp-file-name">${icons.file}Task Panel</div></div>${toolbarMarkup()}</div><div class="tp-notice is-error" role="alert"><strong>Unable to read plan</strong>${escapeHtml(error)}</div>`; bindToolbar(); return; }
+  unavailablePath = null;
+  if (!currentPlan) { emptyStateRendered = true; app.innerHTML = `<div class="tp-head"><div class="tp-file"><div class="tp-file-name">${icons.file}Task Panel</div></div>${toolbarMarkup()}</div><div class="tp-notice"><strong>No tasks detected</strong>Choose a Markdown file with <code>+</code>, or create <code>openspec/changes/&lt;change&gt;/tasks.md</code>.</div>`; bindToolbar(); return; }
+  emptyStateRendered = false;
   const all = currentPlan.tasks, stats = progressOf(all), active = all.find((task) => !task.done), grouped = sections(all);
   const segments = `<span class="tp-seg" style="--n:1;--p:${stats.percent}%"><i></i></span>`;
   const visible = visibleTasks(all, showCompletedTasks);
@@ -130,7 +183,7 @@ function render(error?: string) {
 function bindToolbar() {
   document.querySelector<HTMLButtonElement>("#open-picker")?.addEventListener("click", () => void openFilePicker());
   document.querySelector<HTMLButtonElement>("#toggle-completed")?.addEventListener("click", () => { showCompletedTasks = !showCompletedTasks; render(); });
-  document.querySelector<HTMLButtonElement>("#refresh")?.addEventListener("click", (event) => { const button = event.currentTarget as HTMLButtonElement; button.classList.remove("is-spinning"); void button.offsetWidth; button.classList.add("is-spinning"); window.setTimeout(() => button.classList.remove("is-spinning"), 700); void refresh(); });
+  document.querySelector<HTMLButtonElement>("#refresh")?.addEventListener("click", (event) => { const button = event.currentTarget as HTMLButtonElement; button.classList.remove("is-spinning"); void button.offsetWidth; button.classList.add("is-spinning"); window.setTimeout(() => button.classList.remove("is-spinning"), 700); void refreshPlans(); });
   if (pickerOpen) renderPicker();
 }
 function renderPicker() {
@@ -147,6 +200,6 @@ function renderPicker() {
   document.querySelector<HTMLElement>("#picker-backdrop")?.addEventListener("keydown", (event) => { const index = rowsForKeyboard.indexOf(document.activeElement as HTMLButtonElement); if (event.key === "Escape") close(); else if (event.key === "ArrowDown") { event.preventDefault(); rowsForKeyboard[Math.min(index + 1, rowsForKeyboard.length - 1)]?.focus(); } else if (event.key === "ArrowUp") { event.preventDefault(); rowsForKeyboard[Math.max(index - 1, 0)]?.focus(); } else if (event.key === "Enter") { (document.activeElement as HTMLButtonElement)?.click(); } });
 }
 
-host.onReady(async (ctx) => { applyHostReady(ctx, document.documentElement); directory = ctx.directory; const saved = await host.storage.get<string[]>("collapsedSections"); collapsedSections = new Set(saved ?? []); await refresh(); if (poll) window.clearInterval(poll); poll = window.setInterval(() => void refresh(), POLL_MS); });
-host.onDirectory((value) => { directory = value; void refresh(); });
-host.onSession(() => void refresh());
+host.onReady(async (ctx) => { applyHostReady(ctx, document.documentElement); directory = ctx.directory; try { const saved = await host.storage.get<string[]>("collapsedSections"); collapsedSections = new Set(saved ?? []); } catch { /* plan loading does not depend on saved UI state */ } await refreshPlans(); if (poll) window.clearInterval(poll); poll = window.setInterval(() => void loadPlan(), POLL_MS); });
+host.onDirectory((value) => { directory = value; void refreshPlans(); });
+host.onSession(() => void loadPlan());
