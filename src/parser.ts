@@ -17,8 +17,19 @@ export function parseTasks(markdown: string, fallbackTitle = "Task plan"): Parse
   const headings: Array<{ level: number; text: string }> = [];
   const tasks: Task[] = [];
   let title = fallbackTitle;
+  let fence: { marker: string; length: number } | null = null;
 
   lines.forEach((line, index) => {
+    const fenceLine = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+    if (fence) {
+      if (fenceLine && fenceLine[1][0] === fence.marker && fenceLine[1].length >= fence.length && /^\s*$/.test(line.slice(fenceLine[0].length))) fence = null;
+      return;
+    }
+    if (fenceLine) {
+      fence = { marker: fenceLine[1][0], length: fenceLine[1].length };
+      return;
+    }
+
     const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*$/);
     if (heading) {
       const level = heading[1].length;

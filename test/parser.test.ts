@@ -26,6 +26,7 @@ test("hides completed tasks by default and can show the full plan", () => {
   const tasks = parseTasks("# Plan\n## Finished\n- [x] Done section\n## Active\n- [x] Done in active section\n- [ ] Still working").tasks;
   expect(visibleTasks(tasks, false).map((task) => task.text)).toEqual(["Still working"]);
   expect(visibleTasks(tasks, true).map((task) => task.text)).toHaveLength(3);
+  expect(progressOf(tasks)).toEqual({ completed: 2, total: 3, percent: 67 });
 });
 
 test("reads checkboxes placed at the end of headings", () => {
@@ -50,4 +51,24 @@ test("still strips closing hashes and ignores bracketed prose", () => {
   const plan = parseTasks("# Plan ##\n## Steps ##\n- [ ] One\n### See [ref]\n- [x] Two");
   expect(plan.title).toBe("Plan");
   expect(plan.tasks.map((task) => [task.text, task.done])).toEqual([["One", false], ["Two", true]]);
+});
+
+test("ignores task-like lines in backtick and tilde fences", () => {
+  const plan = parseTasks([
+    "# Plan",
+    "```markdown",
+    "- [ ] fake list task",
+    "### Fake heading task [x]",
+    "```",
+    "~~~text",
+    "- [x] fake completed task",
+    "~~~",
+    "- [ ] Real list task",
+    "### 1.1 Real heading task [x]",
+  ].join("\n"));
+
+  expect(plan.tasks.map((task) => [task.text, task.done])).toEqual([
+    ["Real list task", false],
+    ["1.1 Real heading task", true],
+  ]);
 });
